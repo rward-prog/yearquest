@@ -154,13 +154,13 @@ function GameInner() {
   useEffect(() => {
     if (phase !== 'done' || savedScore) return
     setSavedScore(true)
-    const ts = totalScore + (scores[scores.length - 1] ?? 0) // already included via setScores
     // Award class cash
     const cash = parseInt(localStorage.getItem('yearquest_classcash') || '0', 10)
     const earned = Math.floor(totalScore / 1000)
     if (earned > 0) localStorage.setItem('yearquest_classcash', String(cash + earned))
     // Save to Supabase
-    supabase.from('yq_scores').insert({ name, score: totalScore, mode }).then(() => {})
+    const nc = typeof window !== 'undefined' ? (localStorage.getItem('yearquest_namecolor') ?? null) : null
+    supabase.from('yq_scores').insert({ name, score: totalScore, mode, name_color: nc }).then(() => {})
     supabase.from('yq_visitors').insert({}).then(() => {})
   }, [phase, savedScore, totalScore, name, mode, scores])
 
