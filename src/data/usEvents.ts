@@ -3,6 +3,7 @@ export type HistoryEvent = {
   year: number
   event: string
   hint?: string
+  stateEvent?: boolean  // true = question is about state admission; freeze the map
 }
 
 export const US_EVENTS: HistoryEvent[] = [
@@ -25,10 +26,10 @@ export const US_EVENTS: HistoryEvent[] = [
   { id: 'us17', year: 1823, event: 'President Monroe issues the Monroe Doctrine, warning Europe not to colonize the Americas.' },
   { id: 'us18', year: 1830, event: 'President Andrew Jackson signs the Indian Removal Act, forcibly relocating Native Americans.' },
   { id: 'us19', year: 1838, event: 'The Trail of Tears — thousands of Cherokee are forced to march west; about 4,000 die.' },
-  { id: 'us20', year: 1845, event: 'Texas is annexed and becomes the 28th state of the United States.' },
+  { id: 'us20', year: 1845, event: 'Texas is annexed and becomes the 28th state of the United States.', stateEvent: true },
   { id: 'us21', year: 1846, event: 'The Mexican-American War begins after a border dispute in Texas.' },
   { id: 'us22', year: 1848, event: 'Gold is discovered at Sutter\'s Mill in California, triggering the Gold Rush.' },
-  { id: 'us23', year: 1850, event: 'California is admitted to the Union as a free state under the Compromise of 1850.' },
+  { id: 'us23', year: 1850, event: 'California is admitted to the Union as a free state under the Compromise of 1850.', stateEvent: true },
   { id: 'us24', year: 1852, event: 'Harriet Beecher Stowe publishes "Uncle Tom\'s Cabin," igniting debate about slavery.' },
   { id: 'us25', year: 1857, event: 'The Supreme Court rules in Dred Scott v. Sandford that enslaved people are not citizens.' },
   { id: 'us26', year: 1859, event: 'Abolitionist John Brown raids the federal arsenal at Harper\'s Ferry, Virginia.' },
@@ -66,7 +67,7 @@ export const US_EVENTS: HistoryEvent[] = [
   { id: 'us58', year: 1954, event: 'The Supreme Court rules in Brown v. Board of Education that racial segregation in schools is unconstitutional.' },
   { id: 'us59', year: 1955, event: 'Rosa Parks refuses to give up her bus seat in Montgomery, Alabama, sparking the Civil Rights Movement.' },
   { id: 'us60', year: 1957, event: 'The Soviet Union launches Sputnik, the first artificial satellite, starting the Space Race with America.' },
-  { id: 'us61', year: 1959, event: 'Alaska and Hawaii become the 49th and 50th states, completing the modern United States.' },
+  { id: 'us61', year: 1959, event: 'Alaska and Hawaii become the 49th and 50th states, completing the modern United States.', stateEvent: true },
   { id: 'us62', year: 1961, event: 'President Kennedy announces the goal of landing a man on the Moon by the end of the decade.' },
   { id: 'us63', year: 1962, event: 'The Cuban Missile Crisis brings the U.S. and Soviet Union to the brink of nuclear war.' },
   { id: 'us64', year: 1963, event: 'President John F. Kennedy is assassinated in Dallas, Texas.' },

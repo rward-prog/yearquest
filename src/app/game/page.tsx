@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import USMap from '@/components/USMap'
 
 const TOTAL_ROUNDS = 6
-const TIMER_SECONDS = 10
+const TIMER_SECONDS = 15
 const CLOSE_THRESHOLD = 10 // years — counts for streak
 
 function calcPoints(diff: number, timeLeft: number): number {
@@ -83,6 +83,7 @@ function GameInner() {
   const [hintText, setHintText] = useState('')
   const [showHintOffer, setShowHintOffer] = useState(false)
   const [savedScore, setSavedScore] = useState(false)
+  const [avgDiff, setAvgDiff] = useState<number | null>(null)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sliderRef = useRef<HTMLInputElement>(null)
@@ -103,11 +104,22 @@ function GameInner() {
     setScores(s => [...s, pts])
     setDiffs(d => [...d, diff])
     setStreak(newStreak)
+    setAvgDiff(null)
     setPhase('revealed')
     if (newStreak >= 3 && round + 1 < TOTAL_ROUNDS) {
       setHintAvailable(true)
       setShowHintOffer(true)
     }
+    // Record guess and fetch crowd average
+    const eid = currentEvent.id
+    supabase.from('yq_guesses').insert({ event_id: eid, diff }).then(() => {
+      supabase.from('yq_guesses').select('diff').eq('event_id', eid).then(({ data }) => {
+        if (data && data.length > 1) {
+          const avg = Math.round(data.reduce((s: number, r: { diff: number }) => s + r.diff, 0) / data.length)
+          setAvgDiff(avg)
+        }
+      })
+    })
   }, [currentEvent, streak, round, stopTimer])
 
   // Timer countdown
@@ -175,6 +187,7 @@ function GameInner() {
       setHintText('')
       setHintAvailable(false)
       setShowHintOffer(false)
+      setAvgDiff(null)
       setPhase('guessing')
     }
   }
@@ -209,6 +222,8 @@ function GameInner() {
   }
 
   const showUSMap = mode === 'us' || mode === 'both'
+  // For state-admission events the map would give away the answer — hide during guessing
+  const showMapNow = showUSMap && (phase === 'revealed' || !currentEvent.stateEvent)
 
   if (phase === 'done') {
     return <DoneScreen totalScore={totalScore} scores={scores} diffs={diffs} events={events} mode={mode} name={name} router={router} displayColor={displayColor} />
@@ -231,22 +246,22 @@ function GameInner() {
         <div className="w-full max-w-2xl mb-4">
           <div className="flex justify-between text-xs mb-1">
             <span className="text-gray-500">Time</span>
-            <span style={{ color: timeLeft <= 3 ? '#e04040' : '#d4aa50', fontWeight: 'bold' }}>{timeLeft}s</span>
+            <span style={{ color: timeLeft <= 5 ? '#e04040' : '#d4aa50', fontWeight: 'bold' }}>{timeLeft}s</span>
           </div>
           <div className="w-full h-2 rounded-full" style={{ background: '#1a1a2e' }}>
             <div
               className="h-2 rounded-full transition-all duration-1000"
               style={{
                 width: `${(timeLeft / TIMER_SECONDS) * 100}%`,
-                background: timeLeft <= 3 ? '#e04040' : '#d4aa50',
+                background: timeLeft <= 5 ? '#e04040' : '#d4aa50',
               }}
             />
           </div>
         </div>
       )}
 
-      {/* US Map */}
-      {showUSMap && (
+      {/* US Map — hidden during guessing for state-admission questions */}
+      {showMapNow && (
         <div className="w-full max-w-2xl mb-4">
           <USMap year={phase === 'revealed' ? currentEvent.year : guessYear} />
         </div>
@@ -309,6 +324,11 @@ function GameInner() {
             <div className="text-2xl font-bold" style={{ color: '#d4aa50' }}>
               +{scores[scores.length - 1]} pts
             </div>
+            {avgDiff !== null && (
+              <div className="mt-2 text-xs" style={{ color: '#888' }}>
+                Others averaged ±{avgDiff} year{avgDiff !== 1 ? 's' : ''} off
+              </div>
+            )}
             {streak >= 3 && (
               <div className="mt-2 text-sm" style={{ color: '#4adf80' }}>
                 🔥 {streak} in a row!
