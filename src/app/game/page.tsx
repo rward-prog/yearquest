@@ -6,6 +6,55 @@ import { WORLD_EVENTS } from '@/data/worldEvents'
 import { supabase } from '@/lib/supabase'
 import USMap from '@/components/USMap'
 
+// ——— Sound engine (Web Audio API, no files needed) ———
+function getAudioCtx(): AudioContext | null {
+  if (typeof window === 'undefined') return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Ctor = window.AudioContext || (window as any).webkitAudioContext
+  return Ctor ? new Ctor() : null
+}
+
+let _ctx: AudioContext | null = null
+function ctx(): AudioContext | null {
+  if (!_ctx) _ctx = getAudioCtx()
+  return _ctx
+}
+
+function playTick() {
+  const c = ctx(); if (!c) return
+  const osc = c.createOscillator()
+  const g = c.createGain()
+  osc.connect(g); g.connect(c.destination)
+  osc.type = 'sine'
+  osc.frequency.value = 600
+  g.gain.setValueAtTime(0.04, c.currentTime)
+  g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.04)
+  osc.start(c.currentTime); osc.stop(c.currentTime + 0.04)
+}
+
+function playResult(diff: number) {
+  const c = ctx(); if (!c) return
+  const freqs = diff === 0
+    ? [523, 659, 784, 1047]   // exact — ascending chord
+    : diff <= 5
+      ? [440, 554, 659]        // very close — warm triad
+      : diff <= 25
+        ? [330, 415]           // okay — neutral two-note
+        : [220, 185]           // way off — low descending
+  freqs.forEach((f, i) => {
+    const osc = c.createOscillator()
+    const g = c.createGain()
+    osc.connect(g); g.connect(c.destination)
+    osc.type = diff === 0 ? 'sine' : 'triangle'
+    osc.frequency.value = f
+    const t = c.currentTime + i * (diff === 0 ? 0.12 : 0.15)
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(0.18, t + 0.04)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
+    osc.start(t); osc.stop(t + 0.5)
+  })
+}
+
 const TOTAL_ROUNDS = 6
 const TIMER_SECONDS = 15
 const CLOSE_THRESHOLD = 10 // years — counts for streak
@@ -87,6 +136,8 @@ function GameInner() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sliderRef = useRef<HTMLInputElement>(null)
+  const tickThrottle = useRef<number>(0)
+  const lastGuessYear = useRef<number>(guessYear)
 
   const currentEvent = events[round]
   const totalScore = scores.reduce((a, b) => a + b, 0)
@@ -106,6 +157,7 @@ function GameInner() {
     setStreak(newStreak)
     setAvgDiff(null)
     setPhase('revealed')
+    playResult(diff)
     if (newStreak >= 3 && round + 1 < TOTAL_ROUNDS) {
       setHintAvailable(true)
       setShowHintOffer(true)
@@ -282,22 +334,89 @@ function GameInner() {
       {/* Slider section */}
       <div className="w-full max-w-2xl mb-6">
         <div className="text-center text-4xl font-bold mb-4" style={{ color: '#d4aa50', fontFamily: 'Georgia, serif' }}>
-          {guessYear}
+          {phase === 'revealed' ? (
+            <>
+              <span style={{ color: diffColor(diffs[diffs.length - 1]) }}>{currentEvent.year}</span>
+              {diffs[diffs.length - 1] > 0 && (
+                <span className="text-xl font-normal ml-3" style={{ color: '#555' }}>
+                  (you: {guessYear})
+                </span>
+              )}
+            </>
+          ) : guessYear}
         </div>
-        <input
-          ref={sliderRef}
-          type="range"
-          min={minYear}
-          max={maxYear}
-          value={guessYear}
-          onChange={e => phase === 'guessing' && setGuessYear(Number(e.target.value))}
-          disabled={phase !== 'guessing'}
-          className="w-full"
-          style={{ accentColor: '#d4aa50', height: '6px', cursor: phase === 'guessing' ? 'pointer' : 'default' }}
-        />
+
+        {/* Slider + marker overlay */}
+        <div className="relative w-full">
+          <input
+            ref={sliderRef}
+            type="range"
+            min={minYear}
+            max={maxYear}
+            value={guessYear}
+            onChange={e => {
+              if (phase !== 'guessing') return
+              const val = Number(e.target.value)
+              setGuessYear(val)
+              // Throttled tick sound — only when year value actually changes
+              const now = Date.now()
+              if (val !== lastGuessYear.current && now - tickThrottle.current > 40) {
+                tickThrottle.current = now
+                lastGuessYear.current = val
+                playTick()
+              }
+            }}
+            disabled={phase !== 'guessing'}
+            className="w-full"
+            style={{ accentColor: '#d4aa50', height: '6px', cursor: phase === 'guessing' ? 'pointer' : 'default' }}
+          />
+
+          {/* After reveal: show guess pin and correct year pin on the track */}
+          {phase === 'revealed' && (
+            <div className="relative w-full mt-2" style={{ height: 32 }}>
+              {(() => {
+                const range = maxYear - minYear
+                const guessPct = ((guessYear - minYear) / range) * 100
+                const correctPct = ((currentEvent.year - minYear) / range) * 100
+                const lo = Math.min(guessPct, correctPct)
+                const hi = Math.max(guessPct, correctPct)
+                const dc = diffColor(diffs[diffs.length - 1])
+                return (
+                  <>
+                    {/* Connecting bar between the two pins */}
+                    {diffs[diffs.length - 1] > 0 && (
+                      <div style={{
+                        position: 'absolute', top: 14, height: 4, borderRadius: 2,
+                        left: `${lo}%`, width: `${hi - lo}%`,
+                        background: dc, opacity: 0.4,
+                      }} />
+                    )}
+                    {/* Guess pin (gold) */}
+                    <div style={{
+                      position: 'absolute', top: 8, left: `${guessPct}%`,
+                      transform: 'translateX(-50%)',
+                    }}>
+                      <div style={{ width: 3, height: 16, background: '#d4aa50', borderRadius: 2, margin: '0 auto' }} />
+                      <div className="text-xs text-center mt-1 font-bold" style={{ color: '#d4aa50', whiteSpace: 'nowrap', fontSize: 10 }}>you</div>
+                    </div>
+                    {/* Correct year pin (green/red based on accuracy) */}
+                    <div style={{
+                      position: 'absolute', top: 8, left: `${correctPct}%`,
+                      transform: 'translateX(-50%)',
+                    }}>
+                      <div style={{ width: 3, height: 16, background: dc, borderRadius: 2, margin: '0 auto' }} />
+                      <div className="text-xs text-center mt-1 font-bold" style={{ color: dc, whiteSpace: 'nowrap', fontSize: 10 }}>{currentEvent.year}</div>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-between text-xs text-gray-600 mt-1">
           <span>{minYear}</span>
-          <span className="text-gray-500 text-xs">← → arrow keys  |  Shift+arrow = fast</span>
+          {phase === 'guessing' && <span className="text-gray-500 text-xs">← → arrow keys  |  Shift+arrow = fast</span>}
           <span>{maxYear}</span>
         </div>
       </div>
